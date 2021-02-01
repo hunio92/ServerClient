@@ -15,9 +15,9 @@ public:
     bool isOpen();
     bool connect(sockaddr_in &address);
     bool send(const std::vector<std::uint8_t>& buffer);
-    bool receive(std::vector<std::uint8_t>& buffer);
+    // bool receive(std::vector<std::uint8_t>& buffer);
 
-private:
+public:
     std::int32_t m_fd;
     sockaddr_in m_CliAddr;
 };
@@ -32,11 +32,13 @@ public:
     bool isOpen();
     bool listen();
     ClientSocket accept();
-    bool send(const std::vector<std::uint8_t>& buffer);
-    bool receive(std::vector<std::uint8_t>& buffer);
-    
+    // bool send(const std::vector<std::uint8_t>& buffer);
+    bool receive(std::uint32_t fd, std::vector<std::uint8_t>& buffer);
+    std::vector<ClientSocket> select();
+
 private:
     std::uint32_t m_fd;
     sockaddr_in m_ServAddr;
-    // std::vector<Socket> m_SocketArr;
 };
+
+static std::vector<ClientSocket> m_Sockets;

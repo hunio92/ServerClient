@@ -3,6 +3,7 @@
 #include <cstring>
 
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <netdb.h>
 
@@ -62,11 +63,11 @@ bool ClientSocket::send(const std::vector<std::uint8_t>& buffer)
     return bytesSent == buffer.size();
 }
 
-bool ClientSocket::receive(std::vector<std::uint8_t>& buffer)
-{
-    std::size_t bytesRead = ::recv(m_fd, buffer.data(), buffer.size(), 0);
-    return bytesRead == buffer.size();
-}
+// bool ClientSocket::receive(std::vector<std::uint8_t>& buffer)
+// {
+//     std::size_t bytesRead = ::recv(m_fd, buffer.data(), buffer.size(), 0);
+//     return bytesRead == buffer.size();
+// }
 
 ServerSocket::ServerSocket() :
 m_fd(-1)
@@ -147,14 +148,80 @@ ClientSocket ServerSocket::accept()
     return ClientSocket(cliFd);
 }
 
-bool ServerSocket::send(const std::vector<std::uint8_t>& buffer)
+// bool ServerSocket::send(const std::vector<std::uint8_t>& buffer)
+// {
+//     std::size_t bytesSent = ::send(m_fd, buffer.data(), buffer.size(), 0);
+//     return bytesSent == buffer.size();
+// }
+
+bool ServerSocket::receive(std::uint32_t fd, std::vector<std::uint8_t>& buffer)
 {
-    std::size_t bytesSent = ::send(m_fd, buffer.data(), buffer.size(), 0);
-    return bytesSent == buffer.size();
+    std::size_t bytesRead = ::recv(fd, buffer.data(), buffer.size(), 0);
+    return bytesRead == buffer.size();
 }
 
-bool ServerSocket::receive(std::vector<std::uint8_t>& buffer)
+std::vector<ClientSocket> ServerSocket::select()
 {
-    std::size_t bytesRead = ::recv(m_fd, buffer.data(), buffer.size(), 0);
-    return bytesRead == buffer.size();
+    fd_set master, read_fds;
+
+    FD_ZERO(&master); /* clear the set */
+    FD_ZERO(&read_fds); /* clear the set */
+    FD_SET(m_fd, &master); /* add our file descriptor to the set */
+
+    std::uint32_t fdmax = m_fd;
+
+    struct timeval timeout;
+    timeout.tv_sec = 20;
+    timeout.tv_usec = 0;
+
+    std::cout << "### Start Server ###" << std::endl;
+    while(true)
+    {
+        read_fds = master;
+
+        std::uint8_t ret = ::select(m_fd + 1, &read_fds, NULL, NULL, &timeout);
+        if (ret == -1)
+        {
+            std::cerr << "ERROR: " << "select" << std::endl;
+            exit(-1);
+        }
+        else if (ret == 0)
+        {
+            std::cerr << "ERROR: " << "timeout occurred (20 second) !" << std::endl;
+            exit(-1);
+        }
+        else
+        {
+            for(int i = 0; i <= fdmax; i++) {
+                if(FD_ISSET(i, &read_fds)) 
+                {  
+                    if(i == m_fd) 
+                    {    
+                        ClientSocket newsockfd = accept();
+
+                        FD_SET(newsockfd.m_fd, &master);
+
+                        std::cout << "SERVER: " << " server fd " << i << ": accept new client with fd: " << newsockfd.m_fd << std::endl;
+
+                        if(newsockfd.m_fd > fdmax) {
+                            fdmax = newsockfd.m_fd;
+                        }
+                    }
+                    else
+                    {
+                        std::cout << "SERVER: read message from: " << i << std::endl;
+                        std::vector<std::uint8_t> recBuffer(MESSAGE_MAX_SIZE);
+                        std::string msg{};
+
+                        receive(i, recBuffer);
+
+                        std::transform(recBuffer.begin(), recBuffer.end(), std::back_inserter(msg),
+                                [](std::uint8_t b) { return static_cast<char>(b); });
+
+                        std::cout << "SERVER: received message from CLIENT " << i << ": " << msg << std::endl;
+                    }
+                }
+            }
+        }
+    }
 }
